@@ -6,6 +6,7 @@ import { ToastProviderWrapper } from './components/ui/Toast';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
 import AuthCallback from './pages/AuthCallback';
+import Onboarding from './pages/Onboarding';
 import Dashboard from './pages/Dashboard';
 import Meetings from './pages/Meetings';
 import MeetingDetail from './pages/MeetingDetail';
@@ -20,6 +21,14 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" />;
 }
 
+function OnboardingCheck({ children }: { children: React.ReactNode }) {
+  const onboardingComplete = localStorage.getItem('onboarding_complete');
+  if (!onboardingComplete) {
+    return <Navigate to="/onboarding" />;
+  }
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <ToastProviderWrapper>
@@ -29,12 +38,24 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
 
-        {/* Protected routes */}
+        {/* Onboarding */}
+        <Route
+          path="/onboarding"
+          element={
+            <PrivateRoute>
+              <Onboarding />
+            </PrivateRoute>
+          }
+        />
+
+        {/* Protected routes - require onboarding */}
         <Route
           path="/dashboard"
           element={
             <PrivateRoute>
-              <DashboardLayout />
+              <OnboardingCheck>
+                <DashboardLayout />
+              </OnboardingCheck>
             </PrivateRoute>
           }
         >
