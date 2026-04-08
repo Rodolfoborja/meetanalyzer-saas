@@ -2,46 +2,425 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================
+   Romelly AI - Design System CSS Variables
+   ============================================ */
+
 @layer base {
   :root {
+    /* === Base Colors === */
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --foreground: 240 6% 10%;
+    
+    /* === Primary (Violet) === */
+    --primary: 258 90% 66%;
+    --primary-foreground: 0 0% 100%;
+    
+    /* === Secondary (Teal) === */
+    --secondary: 172 66% 50%;
+    --secondary-foreground: 0 0% 100%;
+    
+    /* === Accent (Coral) === */
+    --accent: 31 97% 72%;
+    --accent-foreground: 240 6% 10%;
+    
+    /* === Muted === */
+    --muted: 240 6% 96%;
+    --muted-foreground: 240 4% 46%;
+    
+    /* === Destructive === */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    
+    /* === Card === */
+    --card: 0 0% 100%;
+    --card-foreground: 240 6% 10%;
+    
+    /* === Popover === */
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 6% 10%;
+    
+    /* === Border & Input === */
+    --border: 240 5% 91%;
+    --input: 240 5% 91%;
+    --ring: 258 90% 66%;
+    
+    /* === Radius === */
     --radius: 0.5rem;
+    
+    /* === Chart Colors (for data viz) === */
+    --chart-1: 258 90% 66%;
+    --chart-2: 172 66% 50%;
+    --chart-3: 31 97% 72%;
+    --chart-4: 142 71% 45%;
+    --chart-5: 217 91% 60%;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    /* === Base Colors (Dark) === */
+    --background: 240 10% 4%;
+    --foreground: 240 5% 96%;
+    
+    /* === Primary (Violet - slightly lighter in dark) === */
+    --primary: 255 79% 76%;
+    --primary-foreground: 240 10% 4%;
+    
+    /* === Secondary (Teal) === */
+    --secondary: 171 77% 64%;
+    --secondary-foreground: 240 10% 4%;
+    
+    /* === Accent (Coral) === */
+    --accent: 27 96% 61%;
+    --accent-foreground: 240 10% 4%;
+    
+    /* === Muted === */
+    --muted: 240 4% 16%;
+    --muted-foreground: 240 5% 65%;
+    
+    /* === Destructive === */
+    --destructive: 0 62% 55%;
+    --destructive-foreground: 0 0% 100%;
+    
+    /* === Card === */
+    --card: 240 6% 10%;
+    --card-foreground: 240 5% 96%;
+    
+    /* === Popover === */
+    --popover: 240 6% 10%;
+    --popover-foreground: 240 5% 96%;
+    
+    /* === Border & Input === */
+    --border: 240 5% 26%;
+    --input: 240 5% 26%;
+    --ring: 255 79% 76%;
+    
+    /* === Chart Colors (Dark) === */
+    --chart-1: 255 79% 76%;
+    --chart-2: 171 77% 64%;
+    --chart-3: 27 96% 61%;
+    --chart-4: 142 71% 55%;
+    --chart-5: 217 91% 70%;
   }
 }
+
+/* ============================================
+   Base Styles
+   ============================================ */
 
 @layer base {
   * {
     @apply border-border;
   }
+  
+  html {
+    @apply scroll-smooth;
+  }
+  
   body {
     @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-feature-settings: 'cv11', 'ss01', 'ss03';
   }
+  
+  /* Typography defaults */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight text-foreground;
+  }
+  
+  h1 {
+    @apply text-4xl md:text-5xl;
+  }
+  
+  h2 {
+    @apply text-3xl md:text-4xl;
+  }
+  
+  h3 {
+    @apply text-2xl md:text-3xl;
+  }
+  
+  h4 {
+    @apply text-xl md:text-2xl;
+  }
+  
+  h5 {
+    @apply text-lg md:text-xl;
+  }
+  
+  h6 {
+    @apply text-base md:text-lg;
+  }
+  
+  p {
+    @apply leading-relaxed;
+  }
+  
+  /* Code styling */
+  code, pre {
+    font-family: 'JetBrains Mono', monospace;
+  }
+  
+  code {
+    @apply px-1.5 py-0.5 rounded bg-muted text-sm;
+  }
+  
+  pre {
+    @apply p-4 rounded-lg bg-muted overflow-x-auto;
+  }
+  
+  pre code {
+    @apply p-0 bg-transparent;
+  }
+}
+
+/* ============================================
+   Component Utilities
+   ============================================ */
+
+@layer components {
+  /* Focus ring utility */
+  .focus-ring {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+  
+  /* Card variants */
+  .card-default {
+    @apply bg-card border border-border rounded-xl shadow-sm p-6;
+  }
+  
+  .card-elevated {
+    @apply bg-card rounded-xl shadow-md p-6;
+  }
+  
+  .card-interactive {
+    @apply bg-card border border-border rounded-xl shadow-sm p-6 
+           transition-all duration-normal cursor-pointer
+           hover:shadow-md hover:border-primary-300 hover:-translate-y-0.5;
+  }
+  
+  /* Button base */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 
+           font-medium rounded-lg transition-all duration-normal
+           focus-visible:outline-none focus-visible:ring-2 
+           focus-visible:ring-ring focus-visible:ring-offset-2
+           disabled:opacity-60 disabled:cursor-not-allowed;
+  }
+  
+  .btn-primary {
+    @apply btn bg-primary-500 text-white shadow-sm
+           hover:bg-primary-600 hover:shadow-primary hover:-translate-y-0.5
+           active:bg-primary-700 active:translate-y-0;
+  }
+  
+  .btn-secondary {
+    @apply btn bg-white border border-gray-200 text-gray-700 shadow-xs
+           hover:bg-gray-50 hover:border-gray-300 hover:shadow-sm
+           active:bg-gray-100
+           dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200
+           dark:hover:bg-gray-700;
+  }
+  
+  .btn-ghost {
+    @apply btn bg-transparent text-gray-600
+           hover:bg-primary-50 hover:text-primary-600
+           active:bg-primary-100
+           dark:text-gray-400 dark:hover:bg-primary-900/20 dark:hover:text-primary-400;
+  }
+  
+  .btn-danger {
+    @apply btn bg-error text-white shadow-sm
+           hover:bg-red-600 hover:shadow-md
+           active:bg-red-700;
+  }
+  
+  /* Button sizes */
+  .btn-sm {
+    @apply px-4 py-2 text-xs;
+  }
+  
+  .btn-md {
+    @apply px-6 py-3 text-sm;
+  }
+  
+  .btn-lg {
+    @apply px-8 py-4 text-base;
+  }
+  
+  /* Input base */
+  .input {
+    @apply w-full px-4 py-3 text-sm bg-background border border-input rounded-lg
+           placeholder:text-muted-foreground
+           transition-all duration-normal
+           focus:outline-none focus:border-primary-500 focus:ring-3 focus:ring-primary-100
+           disabled:opacity-60 disabled:cursor-not-allowed
+           dark:focus:ring-primary-900/30;
+  }
+  
+  .input-error {
+    @apply border-error focus:border-error focus:ring-red-100
+           dark:focus:ring-red-900/30;
+  }
+  
+  /* Label */
+  .label {
+    @apply block text-sm font-medium text-foreground mb-2;
+  }
+  
+  /* Badge */
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full 
+           text-xs font-medium;
+  }
+  
+  .badge-primary {
+    @apply badge bg-primary-100 text-primary-700
+           dark:bg-primary-900/30 dark:text-primary-400;
+  }
+  
+  .badge-secondary {
+    @apply badge bg-secondary-100 text-secondary-700
+           dark:bg-secondary-900/30 dark:text-secondary-400;
+  }
+  
+  .badge-success {
+    @apply badge bg-success-light text-success-dark
+           dark:bg-green-900/30 dark:text-green-400;
+  }
+  
+  .badge-warning {
+    @apply badge bg-warning-light text-warning-dark
+           dark:bg-amber-900/30 dark:text-amber-400;
+  }
+  
+  .badge-error {
+    @apply badge bg-error-light text-error-dark
+           dark:bg-red-900/30 dark:text-red-400;
+  }
+  
+  /* Avatar */
+  .avatar {
+    @apply relative inline-flex items-center justify-center 
+           rounded-full bg-primary-100 text-primary-700 font-medium
+           overflow-hidden;
+  }
+  
+  .avatar-sm { @apply w-8 h-8 text-xs; }
+  .avatar-md { @apply w-10 h-10 text-sm; }
+  .avatar-lg { @apply w-12 h-12 text-base; }
+  .avatar-xl { @apply w-16 h-16 text-lg; }
+  
+  /* Divider */
+  .divider {
+    @apply h-px w-full bg-border;
+  }
+  
+  .divider-vertical {
+    @apply w-px h-full bg-border;
+  }
+}
+
+/* ============================================
+   Utility Classes
+   ============================================ */
+
+@layer utilities {
+  /* Text gradient */
+  .text-gradient {
+    @apply bg-clip-text text-transparent 
+           bg-gradient-to-r from-primary-500 to-secondary-400;
+  }
+  
+  /* Glassmorphism */
+  .glass {
+    @apply bg-white/80 backdrop-blur-md border border-white/20
+           dark:bg-gray-900/80 dark:border-gray-700/20;
+  }
+  
+  /* Hide scrollbar but keep functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  
+  /* Custom scrollbar */
+  .scrollbar-custom {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground)) transparent;
+  }
+  
+  .scrollbar-custom::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  
+  .scrollbar-custom::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .scrollbar-custom::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/30 rounded-full;
+  }
+  
+  .scrollbar-custom::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/50;
+  }
+  
+  /* Animation utilities */
+  .animate-in {
+    animation: fade-in 200ms ease-out, slide-in-up 200ms ease-out;
+  }
+  
+  /* Reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-in,
+    .transition-all,
+    .transition-colors,
+    .transition-transform {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+}
+
+/* ============================================
+   Custom Scrollbar for Webkit (global)
+   ============================================ */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 5px;
+  border: 2px solid hsl(var(--muted));
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* ============================================
+   Selection Color
+   ============================================ */
+
+::selection {
+  background: hsl(var(--primary) / 0.2);
+  color: hsl(var(--primary));
+}
+
+::-moz-selection {
+  background: hsl(var(--primary) / 0.2);
+  color: hsl(var(--primary));
 }
