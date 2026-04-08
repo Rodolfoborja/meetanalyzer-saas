@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './stores/auth';
+import { ToastProviderWrapper } from './components/ui/Toast';
 
 // Pages
 import Landing from './pages/Landing';
@@ -21,27 +22,29 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <Routes>
-      {/* Public routes */}
-      <Route path="/" element={<Landing />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/auth/callback" element={<AuthCallback />} />
+    <ToastProviderWrapper>
+      <Routes>
+        {/* Public routes */}
+        <Route path="/" element={<Landing />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
 
-      {/* Protected routes */}
-      <Route
-        path="/dashboard"
-        element={
-          <PrivateRoute>
-            <DashboardLayout />
-          </PrivateRoute>
-        }
-      >
-        <Route index element={<Dashboard />} />
-        <Route path="meetings" element={<Meetings />} />
-        <Route path="meetings/new" element={<NewMeeting />} />
-        <Route path="meetings/:id" element={<MeetingDetail />} />
-        <Route path="settings" element={<Settings />} />
-      </Route>
-    </Routes>
+        {/* Protected routes */}
+        <Route
+          path="/dashboard"
+          element={
+            <PrivateRoute>
+              <DashboardLayout />
+            </PrivateRoute>
+          }
+        >
+          <Route index element={<Dashboard />} />
+          <Route path="meetings" element={<Meetings />} />
+          <Route path="meetings/new" element={<NewMeeting />} />
+          <Route path="meetings/:id" element={<MeetingDetail />} />
+          <Route path="settings" element={<Settings />} />
+        </Route>
+      </Routes>
+    </ToastProviderWrapper>
   );
 }
