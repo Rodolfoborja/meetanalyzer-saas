@@ -1,0 +1,197 @@
+# ==============================================
+# MeetAnalyzer SaaS - Deploy Pipeline
+# ==============================================
+# Deploy manual a producción (Dokploy)
+
+name: 🚀 Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+      version:
+        description: 'Version tag (optional)'
+        required: false
+        type: string
+
+env:
+  NODE_VERSION: '20'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ==============================================
+  # Build and Push Images
+  # ==============================================
+  build-and-push:
+    name: 🏗 Build & Push
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        app: [api, web]
+
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔧 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🔐 Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🏷️ Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.app }}
+          tags: |
+            type=ref,event=branch
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ inputs.version }},enable=${{ inputs.version != '' }}
+
+      - name: 🏗 Build and push image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./apps/${{ matrix.app }}/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+  # ==============================================
+  # Deploy to Dokploy
+  # ==============================================
+  deploy:
+    name: 🚀 Deploy
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup deployment files
+        run: |
+          # Crear archivos de deployment
+          mkdir -p deployment
+          cp docker-compose.yml deployment/
+          cp .env.example deployment/
+
+      - name: 🚀 Deploy to server via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DOKPLOY_HOST }}
+          username: ${{ secrets.DOKPLOY_USER }}
+          key: ${{ secrets.DOKPLOY_SSH_KEY }}
+          port: ${{ secrets.DOKPLOY_PORT || 22 }}
+          script: |
+            # Navegar al directorio del proyecto
+            cd /home/${{ secrets.DOKPLOY_USER }}/meetanalyzer-saas
+            
+            # Hacer backup de la versión actual
+            if [ -f docker-compose.yml ]; then
+              cp docker-compose.yml docker-compose.yml.backup
+            fi
+            
+            # Descargar nuevos archivos
+            curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github.v3.raw" \
+              -o docker-compose.yml \
+              -L https://api.github.com/repos/${{ github.repository }}/contents/docker-compose.yml
+            
+            # Verificar que el archivo .env existe
+            if [ ! -f .env ]; then
+              echo "⚠️  Archivo .env no encontrado. Copiando .env.example..."
+              cp .env.example .env
+              echo "🔧 Por favor, configura las variables de entorno en .env"
+            fi
+            
+            # Actualizar imágenes
+            export IMAGE_TAG="${{ github.sha }}"
+            
+            # Parar servicios actuales
+            docker-compose down --remove-orphans
+            
+            # Limpiar imágenes antiguas
+            docker system prune -f
+            
+            # Iniciar nuevos servicios
+            docker-compose pull
+            docker-compose up -d
+            
+            # Verificar salud de los servicios
+            sleep 30
+            docker-compose ps
+            
+            # Verificar logs si hay problemas
+            if ! docker-compose ps | grep -q "Up"; then
+              echo "❌ Algunos servicios fallan. Logs:"
+              docker-compose logs --tail=50
+              exit 1
+            fi
+            
+            echo "✅ Deploy completado exitosamente!"
+
+      - name: 📊 Notify deployment status
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ Deployment to ${{ inputs.environment }} successful!"
+          else
+            echo "❌ Deployment to ${{ inputs.environment }} failed!"
+          fi
+
+  # ==============================================
+  # Post-Deploy Health Check
+  # ==============================================
+  health-check:
+    name: 🏥 Health Check
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: success()
+
+    steps:
+      - name: 🏥 Check API health
+        run: |
+          # Esperar a que la API esté disponible
+          for i in {1..10}; do
+            if curl -f "${{ secrets.BACKEND_URL }}/health"; then
+              echo "✅ API is healthy!"
+              break
+            fi
+            echo "⏳ Waiting for API... (attempt $i/10)"
+            sleep 30
+          done
+
+      - name: 🌐 Check Web health
+        run: |
+          # Verificar que el frontend responde
+          if curl -f "${{ secrets.FRONTEND_URL }}"; then
+            echo "✅ Web app is accessible!"
+          else
+            echo "❌ Web app health check failed!"
+            exit 1
+          fi
