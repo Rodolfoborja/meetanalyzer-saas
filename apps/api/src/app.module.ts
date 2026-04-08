@@ -14,6 +14,15 @@ import { StorageModule } from './storage/storage.module';
 import { EmailModule } from './email/email.module';
 import { WebSocketModule } from './websocket/websocket.module';
 
+// 🆕 New innovative modules
+import { AiChatModule } from './ai-chat/ai-chat.module';
+import { SearchModule } from './search/search.module';
+import { CoachingModule } from './coaching/coaching.module';
+import { IntegrationsModule } from './integrations/integrations.module';
+import { ExportsModule } from './exports/exports.module';
+import { TemplatesModule } from './templates/templates.module';
+import { ActionItemsModule } from './action-items/action-items.module';
+
 @Module({
   imports: [
     // Config
@@ -33,17 +42,30 @@ import { WebSocketModule } from './websocket/websocket.module';
     // Core
     PrismaModule,
     
-    // Features
+    // Auth & Users
     AuthModule,
     OrganizationsModule,
     UsersModule,
+    
+    // Meeting Core
     MeetingsModule,
     TranscriptionModule,
     AnalysisModule,
+    
+    // Infrastructure
     BillingModule,
     StorageModule,
     EmailModule,
     WebSocketModule,
+    
+    // 🆕 Innovation Features
+    AiChatModule,        // Chat with your meetings
+    SearchModule,        // Semantic search across all meetings
+    CoachingModule,      // Personal oratory coaching
+    IntegrationsModule,  // Slack, Notion, Linear, Webhooks
+    ExportsModule,       // Export to MD, PDF, Notion, Linear
+    TemplatesModule,     // Meeting templates (1:1, standup, etc.)
+    ActionItemsModule,   // Action item tracking with status
   ],
 })
 export class AppModule {}

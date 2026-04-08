@@ -13,7 +13,7 @@ datasource db {
 
 model Organization {
   id        String   @id @default(cuid())
-  slug      String   @unique // subdomain: empresa.meetanalyzer.com
+  slug      String   @unique // subdomain: empresa.romelly.ai
   name      String
   logo      String?
   plan      Plan     @default(FREE)
@@ -28,13 +28,17 @@ model Organization {
   maxUsers             Int      @default(1)
   
   // Settings
-  defaultLlmProvider   LlmProvider @default(OPENAI)
+  defaultLlmProvider   LlmProvider @default(GEMINI)
   emailNotifications   Boolean     @default(true)
+  slackWebhook         String?
+  notionIntegration    Json?
   
   // Relations
-  users       User[]
-  meetings    Meeting[]
-  invitations Invitation[]
+  users        User[]
+  meetings     Meeting[]
+  invitations  Invitation[]
+  webhooks     Webhook[]
+  templates    MeetingTemplate[]
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -59,8 +63,16 @@ model User {
   anthropicApiKey String?
   geminiApiKey    String?
   
+  // Preferences
+  preferredLanguage String @default("es")
+  coachingEnabled   Boolean @default(true)
+  
   // Relations
-  meetings Meeting[]
+  meetings         Meeting[]
+  comments         Comment[]
+  actionItemsOwned ActionItem[] @relation("ActionItemOwner")
+  aiChats          AiChatSession[]
+  coachingReports  CoachingReport[]
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -107,6 +119,10 @@ model Meeting {
   meetingUrl  String?
   scheduledAt DateTime?
   duration    Int? // minutes
+  
+  // Template
+  templateId  String?
+  template    MeetingTemplate? @relation(fields: [templateId], references: [id])
 
   // Status
   status MeetingStatus @default(PENDING)
@@ -117,10 +133,22 @@ model Meeting {
   audioDuration Float? // seconds
   minutesUsed   Int    @default(0) // Billed minutes
 
+  // Sharing
+  isPublic    Boolean @default(false)
+  shareToken  String? @unique
+  
+  // Tags for search
+  tags        String[]
+  
   // Relations
   transcript   Transcript?
   analysis     Analysis?
   participants Participant[]
+  comments     Comment[]
+  actionItems  ActionItem[]
+  aiChats      AiChatSession[]
+  embeddings   MeetingEmbedding[]
+  exports      Export[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -128,6 +156,7 @@ model Meeting {
   @@index([organizationId])
   @@index([userId])
   @@index([status])
+  @@index([shareToken])
 }
 
 model Transcript {
@@ -157,9 +186,16 @@ model Analysis {
 
   summary     String @db.Text
   keyPoints   Json
-  actionItems Json
+  actionItems Json   // Legacy - now use ActionItem model
   decisions   Json
   followUps   Json
+  
+  // NEW: Advanced Analysis
+  topics          Json?  // Topic clustering with confidence
+  sentiment       Json?  // Overall and per-speaker sentiment
+  meetingType     MeetingType?
+  effectivenessScore Int? // 1-100
+  suggestions     Json?  // AI suggestions for improvement
 
   oratoryMetrics Json?
   rawResponse    Json?
@@ -181,11 +217,270 @@ model Participant {
   turnCount      Int     @default(0)
   wordsPerMinute Float?
   fillerWords    Json?
+  
+  // NEW: Sentiment & Engagement
+  sentimentScore    Float?  // -1 to 1
+  engagementLevel   Float?  // 0 to 1
+  dominanceScore    Float?  // 0 to 1 (how much they dominated)
+  interruptionCount Int     @default(0)
+  questionsAsked    Int     @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([meetingId, speakerLabel])
+  @@index([meetingId])
+}
+
+// ============================================
+// 🎯 Action Items with Tracking
+// ============================================
+
+model ActionItem {
+  id        String @id @default(cuid())
+  meetingId String
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  
+  title       String
+  description String?
+  
+  // Assignment
+  assigneeId  String?
+  assignee    User?   @relation("ActionItemOwner", fields: [assigneeId], references: [id])
+  assigneeName String? // For external assignees
+  
+  // Tracking
+  status      ActionItemStatus @default(PENDING)
+  priority    Priority         @default(MEDIUM)
+  dueDate     DateTime?
+  completedAt DateTime?
+  
+  // Source
+  sourceTimestamp Int?    // Second in meeting where it was mentioned
+  sourceText      String? // Exact quote
+  
+  // Integration sync
+  linearIssueId   String?
+  notionPageId    String?
+  jiraTicketId    String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([meetingId])
+  @@index([assigneeId])
+  @@index([status])
+}
+
+// ============================================
+// 💬 Real-time Collaboration
+// ============================================
+
+model Comment {
+  id        String @id @default(cuid())
+  meetingId String
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  content   String @db.Text
+  timestamp Int?   // Optional: linked to specific moment in meeting
+  
+  // Thread support
+  parentId String?
+  parent   Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  replies  Comment[] @relation("CommentReplies")
+  
+  // Reactions
+  reactions Json? // {emoji: [userId, ...]}
+  
+  resolved Boolean @default(false)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([meetingId])
+  @@index([userId])
+}
+
+// ============================================
+// 🤖 AI Meeting Assistant (Chat)
+// ============================================
+
+model AiChatSession {
+  id        String @id @default(cuid())
+  meetingId String
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  messages AiChatMessage[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([meetingId])
+  @@index([userId])
+}
+
+model AiChatMessage {
+  id        String @id @default(cuid())
+  sessionId String
+  session   AiChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  
+  role    ChatRole
+  content String   @db.Text
+  
+  // For citations
+  citations Json? // [{timestamp, speaker, text}]
+  
+  createdAt DateTime @default(now())
+
+  @@index([sessionId])
+}
+
+// ============================================
+// 🔍 Semantic Search (Vector Embeddings)
+// ============================================
+
+model MeetingEmbedding {
+  id        String @id @default(cuid())
+  meetingId String
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  
+  // Chunk info
+  chunkIndex Int
+  chunkText  String @db.Text
+  timestamp  Int?   // Start timestamp of chunk
+  speaker    String?
+  
+  // Vector (stored as JSON for Postgres, use pgvector in prod)
+  embedding  Json // Float array [768] or [1536]
+  
+  createdAt DateTime @default(now())
+
+  @@unique([meetingId, chunkIndex])
+  @@index([meetingId])
+}
+
+// ============================================
+// 📊 AI Coaching & Personal Insights
+// ============================================
+
+model CoachingReport {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Time period
+  periodStart DateTime
+  periodEnd   DateTime
+  meetingCount Int
+  
+  // Aggregated metrics
+  avgSpeakingPace    Float?
+  avgFillerWordRate  Float?
+  avgParticipation   Float?
+  avgSentiment       Float?
+  
+  // AI-generated insights
+  strengths     Json  // ["Clear communication", "Good questions"]
+  improvements  Json  // ["Reduce filler words", "Allow others to speak"]
+  tips          Json  // Actionable tips
+  comparison    Json? // Comparison to previous period
+  
+  // Goals
+  goals         Json? // User-set goals for next period
+  goalProgress  Json? // Progress on previous goals
+  
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([periodStart, periodEnd])
+}
+
+// ============================================
+// 📝 Meeting Templates
+// ============================================
+
+model MeetingTemplate {
+  id             String @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  name        String
+  description String?
+  type        MeetingType
+  icon        String?
+  
+  // Template config
+  defaultDuration   Int?     // minutes
+  suggestedAgenda   Json?    // ["Item 1", "Item 2"]
+  extractionRules   Json?    // Custom extraction rules
+  promptOverrides   Json?    // Custom prompts for this type
+  
+  // Auto-actions
+  autoCreateTasks   Boolean @default(true)
+  autoShare         Json?   // Auto-share settings
+  
+  isDefault Boolean @default(false)
+  
+  meetings Meeting[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+}
+
+// ============================================
+// 🔗 Integrations & Webhooks
+// ============================================
+
+model Webhook {
+  id             String @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  name    String
+  url     String
+  secret  String? // For HMAC signing
+  
+  events  WebhookEvent[]
+  enabled Boolean @default(true)
+  
+  // Stats
+  lastTriggered DateTime?
+  failureCount  Int @default(0)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+}
+
+// ============================================
+// 📤 Exports
+// ============================================
+
+model Export {
+  id        String @id @default(cuid())
+  meetingId String
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  
+  format     ExportFormat
+  status     ExportStatus @default(PENDING)
+  fileUrl    String?
+  error      String?
+  
+  // Options used
+  options    Json?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([meetingId])
 }
 
@@ -230,6 +525,7 @@ enum MeetingPlatform {
   MICROSOFT_TEAMS
   ZOOM
   UPLOAD
+  RECORDING_BOT // Future: auto-join bots
 }
 
 enum MeetingStatus {
@@ -245,4 +541,60 @@ enum LlmProvider {
   OPENAI
   ANTHROPIC
   GEMINI
+}
+
+enum MeetingType {
+  ONE_ON_ONE
+  STANDUP
+  SPRINT_PLANNING
+  RETROSPECTIVE
+  BRAINSTORM
+  CLIENT_CALL
+  INTERVIEW
+  ALL_HANDS
+  WORKSHOP
+  OTHER
+}
+
+enum ActionItemStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum ChatRole {
+  USER
+  ASSISTANT
+}
+
+enum WebhookEvent {
+  MEETING_CREATED
+  MEETING_COMPLETED
+  ACTION_ITEM_CREATED
+  ACTION_ITEM_COMPLETED
+  ANALYSIS_READY
+}
+
+enum ExportFormat {
+  PDF
+  DOCX
+  MARKDOWN
+  NOTION
+  LINEAR
+  JIRA
+}
+
+enum ExportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
 }
