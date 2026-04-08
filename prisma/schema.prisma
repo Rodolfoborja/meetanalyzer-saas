@@ -1,0 +1,248 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// Multi-tenant Core
+// ============================================
+
+model Organization {
+  id        String   @id @default(cuid())
+  slug      String   @unique // subdomain: empresa.meetanalyzer.com
+  name      String
+  logo      String?
+  plan      Plan     @default(FREE)
+  
+  // Stripe
+  stripeCustomerId     String?  @unique
+  stripeSubscriptionId String?
+  
+  // Usage limits
+  monthlyMinutesLimit  Int      @default(60)
+  monthlyMinutesUsed   Int      @default(0)
+  maxUsers             Int      @default(1)
+  
+  // Settings
+  defaultLlmProvider   LlmProvider @default(OPENAI)
+  emailNotifications   Boolean     @default(true)
+  
+  // Relations
+  users       User[]
+  meetings    Meeting[]
+  invitations Invitation[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  id        String  @id @default(cuid())
+  email     String  @unique
+  name      String?
+  avatar    String?
+  
+  // OAuth
+  googleId  String? @unique
+  
+  // Organization
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  role           Role         @default(MEMBER)
+  
+  // Personal API Keys (optional override)
+  openaiApiKey    String?
+  anthropicApiKey String?
+  geminiApiKey    String?
+  
+  // Relations
+  meetings Meeting[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+}
+
+model Invitation {
+  id        String   @id @default(cuid())
+  email     String
+  role      Role     @default(MEMBER)
+  token     String   @unique @default(cuid())
+  expiresAt DateTime
+  
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  invitedBy   String // User ID who invited
+  
+  createdAt DateTime @default(now())
+
+  @@unique([email, organizationId])
+  @@index([organizationId])
+}
+
+// ============================================
+// Meetings & Analysis
+// ============================================
+
+model Meeting {
+  id     String @id @default(cuid())
+  
+  // Multi-tenant
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Meeting Info
+  title       String
+  description String?
+  platform    MeetingPlatform @default(UPLOAD)
+  meetingUrl  String?
+  scheduledAt DateTime?
+  duration    Int? // minutes
+
+  // Status
+  status MeetingStatus @default(PENDING)
+
+  // Audio
+  audioUrl      String?
+  audioFormat   String?
+  audioDuration Float? // seconds
+  minutesUsed   Int    @default(0) // Billed minutes
+
+  // Relations
+  transcript   Transcript?
+  analysis     Analysis?
+  participants Participant[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([status])
+}
+
+model Transcript {
+  id        String  @id @default(cuid())
+  meetingId String  @unique
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  content   Json   // Array of {timestamp, speaker, text}
+  rawText   String @db.Text
+  wordCount Int
+
+  language        String  @default("es")
+  confidence      Float?
+  transcriptionId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Analysis {
+  id        String  @id @default(cuid())
+  meetingId String  @unique
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  llmProvider LlmProvider
+  model       String
+
+  summary     String @db.Text
+  keyPoints   Json
+  actionItems Json
+  decisions   Json
+  followUps   Json
+
+  oratoryMetrics Json?
+  rawResponse    Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Participant {
+  id        String  @id @default(cuid())
+  meetingId String
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  speakerLabel   String
+  name           String?
+  email          String?
+  speakingTime   Int     @default(0)
+  wordCount      Int     @default(0)
+  turnCount      Int     @default(0)
+  wordsPerMinute Float?
+  fillerWords    Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([meetingId, speakerLabel])
+  @@index([meetingId])
+}
+
+// ============================================
+// Billing
+// ============================================
+
+model SubscriptionEvent {
+  id        String   @id @default(cuid())
+  
+  organizationId String
+  
+  eventType  String // invoice.paid, subscription.updated, etc.
+  stripeEventId String @unique
+  data       Json
+  
+  createdAt DateTime @default(now())
+
+  @@index([organizationId])
+}
+
+// ============================================
+// Enums
+// ============================================
+
+enum Plan {
+  FREE        // 60 min/mes, 1 usuario
+  STARTER     // 300 min/mes, 5 usuarios - $19/mes
+  PRO         // 1000 min/mes, 20 usuarios - $49/mes
+  ENTERPRISE  // Ilimitado - Custom
+}
+
+enum Role {
+  OWNER   // Full access + billing
+  ADMIN   // Full access except billing
+  MEMBER  // CRUD own meetings
+  VIEWER  // Read only
+}
+
+enum MeetingPlatform {
+  GOOGLE_MEET
+  MICROSOFT_TEAMS
+  ZOOM
+  UPLOAD
+}
+
+enum MeetingStatus {
+  PENDING
+  UPLOADING
+  TRANSCRIBING
+  ANALYZING
+  COMPLETED
+  ERROR
+}
+
+enum LlmProvider {
+  OPENAI
+  ANTHROPIC
+  GEMINI
+}

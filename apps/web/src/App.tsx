@@ -1,0 +1,47 @@
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { useAuthStore } from './stores/auth';
+
+// Pages
+import Landing from './pages/Landing';
+import Login from './pages/Login';
+import AuthCallback from './pages/AuthCallback';
+import Dashboard from './pages/Dashboard';
+import Meetings from './pages/Meetings';
+import MeetingDetail from './pages/MeetingDetail';
+import NewMeeting from './pages/NewMeeting';
+import Settings from './pages/Settings';
+
+// Layout
+import DashboardLayout from './components/layouts/DashboardLayout';
+
+function PrivateRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated } = useAuthStore();
+  return isAuthenticated ? <>{children}</> : <Navigate to="/login" />;
+}
+
+export default function App() {
+  return (
+    <Routes>
+      {/* Public routes */}
+      <Route path="/" element={<Landing />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
+
+      {/* Protected routes */}
+      <Route
+        path="/dashboard"
+        element={
+          <PrivateRoute>
+            <DashboardLayout />
+          </PrivateRoute>
+        }
+      >
+        <Route index element={<Dashboard />} />
+        <Route path="meetings" element={<Meetings />} />
+        <Route path="meetings/new" element={<NewMeeting />} />
+        <Route path="meetings/:id" element={<MeetingDetail />} />
+        <Route path="settings" element={<Settings />} />
+      </Route>
+    </Routes>
+  );
+}
