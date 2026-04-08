@@ -12,6 +12,7 @@ import { AnalysisModule } from './analysis/analysis.module';
 import { BillingModule } from './billing/billing.module';
 import { StorageModule } from './storage/storage.module';
 import { EmailModule } from './email/email.module';
+import { WebSocketModule } from './websocket/websocket.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { EmailModule } from './email/email.module';
     BillingModule,
     StorageModule,
     EmailModule,
+    WebSocketModule,
   ],
 })
 export class AppModule {}
