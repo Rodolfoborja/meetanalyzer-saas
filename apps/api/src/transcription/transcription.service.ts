@@ -1,323 +1,163 @@
-import {
-  Injectable,
-  NotFoundException,
-  InternalServerErrorException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InjectQueue } from '@nestjs/bull';
-import { Queue } from 'bull';
-import { AssemblyAI } from 'assemblyai';
 import { PrismaService } from '../common/prisma/prisma.service';
-import { TranscribeJobDto, TranscriptionLanguage } from './dto/transcribe-job.dto';
-import { 
-  TranscriptionResponseDto, 
-  TranscriptionJobStatusDto,
-  TranscriptSegment 
-} from './dto/transcription-response.dto';
-import { MeetingStatus, User } from '@prisma/client';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import * as fs from 'fs';
+import * as path from 'path';
+
+export interface TranscriptionSegment {
+  timestamp: number;
+  speaker: string;
+  text: string;
+}
+
+export interface TranscriptionResult {
+  segments: TranscriptionSegment[];
+  rawText: string;
+  wordCount: number;
+  duration: number;
+  speakers: string[];
+  language: string;
+}
 
 @Injectable()
 export class TranscriptionService {
   private readonly logger = new Logger(TranscriptionService.name);
-  private readonly assemblyAI: AssemblyAI;
 
   constructor(
+    private config: ConfigService,
     private prisma: PrismaService,
-    private configService: ConfigService,
-    @InjectQueue('transcription') private transcriptionQueue: Queue,
-  ) {
-    const apiKey = this.configService.get<string>('ASSEMBLYAI_API_KEY');
-    if (!apiKey) {
-      this.logger.error('AssemblyAI API key not found in configuration');
-    }
-    this.assemblyAI = new AssemblyAI({ apiKey: apiKey || '' });
-  }
+  ) {}
 
-  async startTranscription(transcribeDto: TranscribeJobDto, user: User): Promise<{ jobId: string; message: string }> {
-    const { meetingId, audioUrl, language, speakerLabels, keywordBoosting } = transcribeDto;
+  async transcribe(
+    audioPath: string,
+    apiKey?: string,
+  ): Promise<TranscriptionResult> {
+    const geminiKey = apiKey || this.config.get('GEMINI_API_KEY');
 
-    // Verificar que la reunión existe y pertenece a la organización
-    const meeting = await this.prisma.meeting.findFirst({
-      where: {
-        id: meetingId,
-        organizationId: user.organizationId,
-      },
-    });
-
-    if (!meeting) {
-      throw new NotFoundException('Reunión no encontrada');
+    if (!geminiKey) {
+      throw new Error('Gemini API key not configured');
     }
 
-    // Verificar que la reunión tiene audio
-    if (!meeting.audioUrl) {
-      throw new NotFoundException('La reunión no tiene archivo de audio');
-    }
+    const genAI = new GoogleGenerativeAI(geminiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
 
-    // Actualizar estado de la reunión
-    await this.prisma.meeting.update({
-      where: { id: meetingId },
-      data: { status: MeetingStatus.TRANSCRIBING },
-    });
+    // Read audio file and convert to base64
+    const audioBuffer = fs.readFileSync(audioPath);
+    const base64Audio = audioBuffer.toString('base64');
+    const mimeType = this.getMimeType(audioPath);
 
-    // Agregar job a la cola
-    const job = await this.transcriptionQueue.add(
-      'transcribe-audio',
-      {
-        meetingId,
-        audioUrl,
-        language,
-        speakerLabels,
-        keywordBoosting,
-        userId: user.id,
-        organizationId: user.organizationId,
-      },
-      {
-        attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 5000,
-        },
-        removeOnComplete: 10,
-        removeOnFail: 10,
-      }
-    );
+    const prompt = `Transcribe this audio file completely. 
 
-    return {
-      jobId: job.id.toString(),
-      message: 'Transcripción iniciada. Recibirás una notificación cuando esté lista.',
-    };
-  }
+IMPORTANT: Identify different speakers and label them as "Speaker 1", "Speaker 2", etc.
 
-  async processTranscription(jobData: any): Promise<TranscriptionResponseDto> {
-    const { meetingId, audioUrl, language, speakerLabels, keywordBoosting } = jobData;
+Return the transcription in this exact JSON format:
+{
+  "segments": [
+    {"timestamp": 0, "speaker": "Speaker 1", "text": "What was said"},
+    {"timestamp": 15, "speaker": "Speaker 2", "text": "Response"}
+  ],
+  "language": "es",
+  "duration_seconds": 120
+}
+
+Rules:
+- timestamp is in seconds from start
+- Detect language automatically (es, en, etc.)
+- Be accurate with speaker changes
+- Include everything said
+- Return ONLY valid JSON, no markdown`;
 
     try {
-      this.logger.log(`Starting transcription for meeting ${meetingId}`);
-
-      // Configurar parámetros de transcripción
-      const transcriptConfig = {
-        audio_url: audioUrl,
-        language_code: language === TranscriptionLanguage.AUTO ? null : language,
-        speaker_labels: speakerLabels,
-        speakers_expected: speakerLabels ? 10 : null, // Máximo 10 speakers
-        boost_param: keywordBoosting ? 'high' : 'default',
-        format_text: true,
-        punctuate: true,
-        dual_channel: false,
-      };
-
-      // Iniciar transcripción en AssemblyAI
-      const transcript = await this.assemblyAI.transcripts.create(transcriptConfig);
-      
-      // Esperar a que complete
-      const completedTranscript = await this.assemblyAI.transcripts.waitUntilReady(transcript.id);
-
-      if (completedTranscript.status === 'error') {
-        throw new Error(completedTranscript.error || 'Error en la transcripción');
-      }
-
-      // Procesar resultado
-      const segments: TranscriptSegment[] = [];
-      let rawText = '';
-      let totalConfidence = 0;
-      let confidenceCount = 0;
-
-      if (completedTranscript.utterances && speakerLabels) {
-        // Con speaker labels
-        for (const utterance of completedTranscript.utterances) {
-          segments.push({
-            timestamp: utterance.start,
-            speaker: `Speaker ${utterance.speaker}`,
-            text: utterance.text,
-            confidence: utterance.confidence,
-          });
-          rawText += `Speaker ${utterance.speaker}: ${utterance.text}\n`;
-          totalConfidence += utterance.confidence;
-          confidenceCount++;
-        }
-      } else if (completedTranscript.words) {
-        // Sin speaker labels, agrupar por frases
-        let currentText = '';
-        let currentStart = 0;
-        let currentConfidences: number[] = [];
-
-        for (let i = 0; i < completedTranscript.words.length; i++) {
-          const word = completedTranscript.words[i];
-          
-          if (i === 0) {
-            currentStart = word.start;
-          }
-
-          currentText += word.text + ' ';
-          currentConfidences.push(word.confidence);
-
-          // Dividir por puntuación o cada 20 palabras
-          const shouldSplit = word.text.endsWith('.') || 
-                             word.text.endsWith('?') || 
-                             word.text.endsWith('!') ||
-                             currentConfidences.length >= 20;
-
-          if (shouldSplit || i === completedTranscript.words.length - 1) {
-            const avgConfidence = currentConfidences.reduce((a, b) => a + b, 0) / currentConfidences.length;
-            
-            segments.push({
-              timestamp: currentStart,
-              speaker: 'Speaker 1',
-              text: currentText.trim(),
-              confidence: avgConfidence,
-            });
-
-            totalConfidence += avgConfidence;
-            confidenceCount++;
-            rawText += currentText.trim() + '\n';
-            
-            // Reset para siguiente segmento
-            currentText = '';
-            currentConfidences = [];
-            if (i < completedTranscript.words.length - 1) {
-              currentStart = completedTranscript.words[i + 1]?.start || word.end;
-            }
-          }
-        }
-      } else {
-        // Fallback: usar texto completo
-        segments.push({
-          timestamp: 0,
-          speaker: 'Speaker 1',
-          text: completedTranscript.text || '',
-          confidence: completedTranscript.confidence || 0,
-        });
-        rawText = completedTranscript.text || '';
-        totalConfidence = completedTranscript.confidence || 0;
-        confidenceCount = 1;
-      }
-
-      const averageConfidence = confidenceCount > 0 ? totalConfidence / confidenceCount : 0;
-      const wordCount = (completedTranscript.text || '').split(' ').filter(word => word.length > 0).length;
-
-      // Guardar en base de datos
-      const savedTranscript = await this.prisma.transcript.create({
-        data: {
-          meetingId,
-          content: segments,
-          rawText,
-          wordCount,
-          language: completedTranscript.language_code || 'es',
-          confidence: averageConfidence,
-          transcriptionId: completedTranscript.id,
-        },
-      });
-
-      // Actualizar minutos usados en la reunión
-      const audioDurationMinutes = Math.ceil((completedTranscript.audio_duration || 0) / 60);
-      await this.prisma.meeting.update({
-        where: { id: meetingId },
-        data: { 
-          status: MeetingStatus.ANALYZING, // Listo para análisis
-          minutesUsed: audioDurationMinutes,
-        },
-      });
-
-      // Actualizar minutos usados en la organización
-      await this.prisma.organization.update({
-        where: { id: jobData.organizationId },
-        data: {
-          monthlyMinutesUsed: {
-            increment: audioDurationMinutes,
+      const result = await model.generateContent([
+        { text: prompt },
+        {
+          inlineData: {
+            mimeType,
+            data: base64Audio,
           },
         },
-      });
+      ]);
 
-      this.logger.log(`Transcription completed for meeting ${meetingId}`);
+      const response = result.response.text();
+      const parsed = this.parseResponse(response);
 
-      // TODO: Aquí se podría disparar el job de análisis automáticamente
-      // Esto se implementará en el módulo de Analysis
+      // Calculate metrics
+      const rawText = parsed.segments.map((s) => s.text).join(' ');
+      const wordCount = rawText.split(/\s+/).filter((w) => w).length;
+      const speakers = [...new Set(parsed.segments.map((s) => s.speaker))];
 
       return {
-        id: savedTranscript.id,
-        meetingId: savedTranscript.meetingId,
-        content: segments,
-        rawText: savedTranscript.rawText,
-        wordCount: savedTranscript.wordCount,
-        language: savedTranscript.language,
-        confidence: savedTranscript.confidence || 0,
-        transcriptionId: savedTranscript.transcriptionId || '',
-        createdAt: savedTranscript.createdAt,
-        updatedAt: savedTranscript.updatedAt,
+        segments: parsed.segments,
+        rawText,
+        wordCount,
+        duration: parsed.duration_seconds || 0,
+        speakers,
+        language: parsed.language || 'es',
       };
-
     } catch (error) {
-      this.logger.error(`Transcription failed for meeting ${meetingId}:`, error);
-      
-      // Actualizar estado de error en la reunión
-      await this.prisma.meeting.update({
-        where: { id: meetingId },
-        data: { status: MeetingStatus.ERROR },
-      });
-
-      throw new InternalServerErrorException('Error en la transcripción: ' + (error as Error).message);
+      this.logger.error('Gemini transcription failed', error);
+      throw new Error(`Transcription failed: ${error.message}`);
     }
   }
 
-  async getJobStatus(jobId: string, user: User): Promise<TranscriptionJobStatusDto> {
-    const job = await this.transcriptionQueue.getJob(jobId);
+  async transcribeFromUrl(
+    audioUrl: string,
+    apiKey?: string,
+  ): Promise<TranscriptionResult> {
+    // Download file first, then transcribe
+    const axios = (await import('axios')).default;
+    const response = await axios.get(audioUrl, { responseType: 'arraybuffer' });
     
-    if (!job) {
-      throw new NotFoundException('Job de transcripción no encontrado');
+    const tempPath = path.join('/tmp', `audio_${Date.now()}.mp3`);
+    fs.writeFileSync(tempPath, response.data);
+    
+    try {
+      const result = await this.transcribe(tempPath, apiKey);
+      return result;
+    } finally {
+      // Cleanup
+      if (fs.existsSync(tempPath)) {
+        fs.unlinkSync(tempPath);
+      }
     }
-
-    // Verificar que el job pertenece a la organización del usuario
-    if (job.data.organizationId !== user.organizationId) {
-      throw new NotFoundException('Job de transcripción no encontrado');
-    }
-
-    const status = await job.getState();
-    const progress = job.progress();
-
-    const response: TranscriptionJobStatusDto = {
-      jobId: job.id.toString(),
-      meetingId: job.data.meetingId,
-      status,
-      progress: typeof progress === 'number' ? progress : 0,
-    };
-
-    if (status === 'completed' && job.returnvalue) {
-      response.result = job.returnvalue;
-    } else if (status === 'failed' && job.failedReason) {
-      response.error = job.failedReason;
-    }
-
-    return response;
   }
 
-  async getTranscript(meetingId: string, user: User): Promise<TranscriptionResponseDto | null> {
-    const meeting = await this.prisma.meeting.findFirst({
-      where: {
-        id: meetingId,
-        organizationId: user.organizationId,
-      },
-      include: {
-        transcript: true,
-      },
-    });
-
-    if (!meeting || !meeting.transcript) {
-      return null;
+  private parseResponse(response: string): any {
+    // Clean up response - remove markdown if present
+    let cleaned = response.trim();
+    if (cleaned.startsWith('```json')) {
+      cleaned = cleaned.slice(7);
+    }
+    if (cleaned.startsWith('```')) {
+      cleaned = cleaned.slice(3);
+    }
+    if (cleaned.endsWith('```')) {
+      cleaned = cleaned.slice(0, -3);
     }
 
-    const transcript = meeting.transcript;
-    return {
-      id: transcript.id,
-      meetingId: transcript.meetingId,
-      content: transcript.content as TranscriptSegment[],
-      rawText: transcript.rawText,
-      wordCount: transcript.wordCount,
-      language: transcript.language,
-      confidence: transcript.confidence || 0,
-      transcriptionId: transcript.transcriptionId || '',
-      createdAt: transcript.createdAt,
-      updatedAt: transcript.updatedAt,
+    try {
+      return JSON.parse(cleaned);
+    } catch (error) {
+      this.logger.error('Failed to parse Gemini response', { response: cleaned });
+      return {
+        segments: [{ timestamp: 0, speaker: 'Speaker 1', text: cleaned }],
+        language: 'es',
+        duration_seconds: 0,
+      };
+    }
+  }
+
+  private getMimeType(filePath: string): string {
+    const ext = path.extname(filePath).toLowerCase();
+    const mimeTypes: Record<string, string> = {
+      '.mp3': 'audio/mp3',
+      '.wav': 'audio/wav',
+      '.m4a': 'audio/mp4',
+      '.ogg': 'audio/ogg',
+      '.webm': 'audio/webm',
+      '.mp4': 'video/mp4',
     };
+    return mimeTypes[ext] || 'audio/mp3';
   }
 }
