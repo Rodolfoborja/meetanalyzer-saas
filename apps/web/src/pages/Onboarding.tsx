@@ -76,7 +76,7 @@ export default function Onboarding() {
         chrome.runtime.sendMessage(
           'YOUR_EXTENSION_ID', // Replace with actual ID
           { type: 'ping' },
-          (response) => {
+          (response: { status?: string; connected?: boolean } | undefined) => {
             if (response?.status === 'ok') {
               setExtensionInstalled(true);
               if (response.connected) {
