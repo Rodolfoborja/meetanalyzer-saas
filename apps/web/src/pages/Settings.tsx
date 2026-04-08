@@ -72,7 +72,7 @@ export default function Settings() {
 
   // Profile state
   const [name, setName] = useState(user?.name || '');
-  const [email, setEmail] = useState(user?.email || '');
+  const [email, _setEmail] = useState(user?.email || '');
   const [savingProfile, setSavingProfile] = useState(false);
 
   // Organization state

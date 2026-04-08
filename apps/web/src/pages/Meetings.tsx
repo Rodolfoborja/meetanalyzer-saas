@@ -1,11 +1,10 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search,
   Plus,
   FileAudio,
-  Filter,
   ChevronLeft,
   ChevronRight,
   Calendar,

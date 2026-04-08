@@ -12,7 +12,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend,
 } from 'recharts';
 import {
   ArrowLeft,
@@ -40,10 +39,8 @@ import {
   updateActionItem,
   updateSpeakerName,
   type Meeting,
-  type ActionItem,
-  type TranscriptSegment,
 } from '../lib/api';
-import { formatDate, formatDuration, formatTime, cn } from '../lib/utils';
+import { formatDate, formatDuration, cn } from '../lib/utils';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
@@ -696,7 +693,7 @@ function AnalyticsTab({
                 </tr>
               </thead>
               <tbody>
-                {speakingStats.map((stat, index) => {
+                {speakingStats.map((stat) => {
                   const participation = participationData.find((p) => p.name === stat.name);
                   return (
                     <tr key={stat.name} className="border-b last:border-0">

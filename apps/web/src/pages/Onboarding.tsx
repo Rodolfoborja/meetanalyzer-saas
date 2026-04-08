@@ -11,7 +11,6 @@ import {
   Link,
   Mic,
   Sparkles,
-  ExternalLink
 } from 'lucide-react';
 import { useAuthStore } from '../stores/auth';
 
@@ -61,7 +60,7 @@ export default function Onboarding() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const [currentStep, setCurrentStep] = useState(1);
-  const [extensionInstalled, setExtensionInstalled] = useState(false);
+  const [_extensionInstalled, setExtensionInstalled] = useState(false);
   const [extensionConnected, setExtensionConnected] = useState(false);
 
   useEffect(() => {
