@@ -6,9 +6,9 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Instalar dependencias primero (mejor cache)
-COPY package*.json ./
-RUN npm ci
+# Instalar dependencias
+COPY package.json ./
+RUN npm install
 
 # Copiar código fuente
 COPY . .
